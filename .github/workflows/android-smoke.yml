@@ -1,0 +1,60 @@
+name: Verify APK on Android
+on:
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Successful Android build run ID
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Download tested build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+        run: gh run download "$BUILD_RUN" --name pixelwild-beta-apk --dir artifacts/apk
+      - name: Start emulator
+        run: |
+          sudo chmod 666 /dev/kvm
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'system-images;android-35;google_apis;x86_64'
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n pixelwild -k 'system-images;android-35;google_apis;x86_64' --device pixel_2
+          "$ANDROID_HOME/emulator/emulator" -avd pixelwild -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
+          adb wait-for-device
+          for i in $(seq 1 120); do
+            if adb shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$'; then break; fi
+            sleep 2
+          done
+          adb shell input keyevent 82
+          adb install artifacts/apk/app-debug.apk
+          adb shell svc wifi disable
+          adb shell svc data disable
+          adb shell am start -n com.pixelwild.game/.MainActivity
+          sleep 5
+          pid=$(adb shell pidof com.pixelwild.game | tr -d '\r')
+          test -n "$pid"
+          adb forward tcp:9222 "localabstract:webview_devtools_remote_$pid"
+      - name: Play offline inside APK
+        run: node scripts/android-smoke.mjs
+      - name: Collect Android evidence
+        if: always()
+        run: |
+          adb logcat -d > artifacts/android-logcat.txt
+          adb exec-out screencap -p > artifacts/android-screen.png
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: android-verification
+          path: |
+            artifacts/android-*.png
+            artifacts/android-logcat.txt

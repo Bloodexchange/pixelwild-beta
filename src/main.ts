@@ -418,6 +418,7 @@ setInterval(() => {
   $("#location").textContent =
     `${phase(game.state) > 0.55 ? "☾ Ночь" : "☼ День"} · Глубина ${Math.max(0, Math.floor(game.state.player.y / 24) - 30)} м`;
 }, 1000);
+$("#app").inert = false;
 void api("auth/get-session")
   .then((d) => {
     user = d?.user ?? null;

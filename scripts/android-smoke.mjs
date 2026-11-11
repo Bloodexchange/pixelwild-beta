@@ -1,0 +1,18 @@
+import { chromium } from '@playwright/test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+const browser=await chromium.connectOverCDP('http://127.0.0.1:9222');
+const context=browser.contexts()[0];const page=context.pages()[0];
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.locator('#play').waitFor({timeout:30000});await page.click('#play');
+await page.click('#craft');await page.locator('[data-recipe="0"]').click();
+assert.match(await page.locator('.inventory').innerText(),/Доски × 4/);
+await page.locator('[data-recipe="0"]').click();await page.locator('[data-recipe="1"]').click();
+await page.click('.close');await page.click('#menu');await page.waitForTimeout(1000);await page.click('#resume');
+await page.reload();await page.click('#play');await page.click('#craft');assert.match(await page.locator('.inventory').innerText(),/Верстак × 1/);await page.click('.close');
+const move=await page.locator('[data-key="KeyD"]').boundingBox();assert.ok(move);await page.mouse.move(move.x+move.width/2,move.y+move.height/2);await page.mouse.down();await page.waitForTimeout(500);await page.mouse.up();
+await page.screenshot({path:'artifacts/android-offline.png'});
+execFileSync('adb',['shell','input','keyevent','3']);await page.waitForTimeout(1000);execFileSync('adb',['shell','am','start','-n','com.pixelwild.game/.MainActivity']);await page.waitForTimeout(1500);
+assert.equal(await page.locator('#hud').isVisible(),true);assert.deepEqual(errors,[]);
+console.log('PASS: APK installed, launched offline, crafted resources, persisted through WebView reload, and resumed from Android background.');
+await browser.close();

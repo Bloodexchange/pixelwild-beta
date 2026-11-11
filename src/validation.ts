@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { W, H } from "./world";
+import { W, H } from "./world.js";
 export const saveSchema = z.object({
   version: z.literal(1),
   seed: z.number().int().min(0).max(1000000),

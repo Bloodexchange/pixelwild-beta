@@ -1,0 +1,53 @@
+import { chromium } from '@playwright/test';
+import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+import { createWorld } from '../src/world';
+import { db } from '../server/auth';
+
+const base=process.env.BASE_URL||'https://pixelwild-beta.vercel.app';
+const email=`pixelwild-test-${Date.now()}@example.invalid`;
+const email2=`pixelwild-native-${Date.now()}@example.invalid`;
+const password=randomBytes(24).toString('base64url');
+const browser=await chromium.launch({channel:'chrome',headless:true});
+try {
+ const context=await browser.newContext();
+ const page=await context.newPage();
+ await page.goto(base);
+ await page.click('#account-home');
+ await page.click('#tab-signup');
+ await page.locator('[name=name]').fill('Cloud verification');
+ await page.locator('[name=email]').fill(email);
+ await page.locator('[name=password]').fill(password);
+ await page.click('#submit-auth');
+ await page.locator('#account-label').waitFor({timeout:30000});
+ assert.match(await page.locator('#account-label').innerText(),/Cloud verification/);
+ const session=await context.request.get(base+'/api/auth/get-session');
+ assert.ok((await session.json()).user.id);
+ let response=await context.request.get(base+'/api/world');
+ assert.equal(response.status(),200);assert.equal((await response.json()).state,null);
+ const state=createWorld(701);
+ response=await context.request.put(base+'/api/world',{headers:{Origin:base},data:{state,revision:0}});
+ assert.equal(response.status(),200,await response.text());
+ assert.equal((await response.json()).revision,1);
+ response=await context.request.get(base+'/api/world');
+ assert.deepEqual((await response.json()).state.tiles,state.tiles);
+ response=await context.request.put(base+'/api/world',{headers:{Origin:base},data:{state,revision:0}});
+ assert.equal(response.status(),409);
+ response=await context.request.put(base+'/api/world',{headers:{Origin:base},data:{state:{...state,tiles:[999]},revision:1}});
+ assert.equal(response.status(),400);
+ const denied=await fetch(base+'/api/world');assert.equal(denied.status,401);
+ const nativeSignup=await fetch(base+'/api/auth/sign-up/email',{method:'POST',headers:{Origin:'https://localhost','Content-Type':'application/json'},body:JSON.stringify({name:'Native verification',email:email2,password})});
+ assert.equal(nativeSignup.status,200,await nativeSignup.clone().text());
+ const token=nativeSignup.headers.get('set-auth-token');assert.ok(token);
+ const nativeWorld=await fetch(base+'/api/world',{headers:{Origin:'https://localhost',Authorization:`Bearer ${token}`}});
+ assert.equal(nativeWorld.status,200);assert.equal((await nativeWorld.json()).state,null);
+ const rejectedOrigin=await fetch(base+'/api/world',{headers:{Origin:'https://untrusted.invalid',Authorization:`Bearer ${token}`}});
+ assert.equal(rejectedOrigin.status,403);
+ await page.click('#logout');await page.locator('#tab-login').waitFor();
+ await page.locator('[name=email]').fill(email);await page.locator('[name=password]').fill(password);await page.click('#submit-auth');await page.locator('#account-label').waitFor({timeout:30000});
+ console.log('PASS: real browser registration/login/logout; Neon save/read; conflict detection; invalid data rejection; unauthorized rejection; Android bearer session; cross-account isolation; untrusted origin rejection.');
+} finally {
+ await browser.close();
+ await db().query('DELETE FROM "user" WHERE email IN ($1,$2)',[email,email2]);
+ await db().end();
+}
