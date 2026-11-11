@@ -2,6 +2,11 @@ name: Build Android Beta
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - 'scripts/android-smoke.mjs'
+      - '.github/workflows/android-smoke.yml'
     tags: ["v*"]
   workflow_dispatch:
 permissions:

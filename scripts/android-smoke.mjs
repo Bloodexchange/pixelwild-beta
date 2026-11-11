@@ -1,8 +1,8 @@
-import { chromium } from '@playwright/test';
+import { _android as android } from 'playwright';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-const browser=await chromium.connectOverCDP('http://127.0.0.1:9222');
-const context=browser.contexts()[0];const page=context.pages()[0];
+const [device]=await android.devices();assert.ok(device);
+const webview=await device.webView({pkg:'com.pixelwild.game'});const page=await webview.page();
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 await page.locator('#play').waitFor({timeout:30000});await page.click('#play');
 await page.click('#craft');await page.locator('[data-recipe="0"]').click();
@@ -15,4 +15,4 @@ await page.screenshot({path:'artifacts/android-offline.png'});
 execFileSync('adb',['shell','input','keyevent','3']);await page.waitForTimeout(1000);execFileSync('adb',['shell','am','start','-n','com.pixelwild.game/.MainActivity']);await page.waitForTimeout(1500);
 assert.equal(await page.locator('#hud').isVisible(),true);assert.deepEqual(errors,[]);
 console.log('PASS: APK installed, launched offline, crafted resources, persisted through WebView reload, and resumed from Android background.');
-await browser.close();
+await device.close();
