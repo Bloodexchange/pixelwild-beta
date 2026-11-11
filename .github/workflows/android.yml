@@ -1,0 +1,50 @@
+name: Build Android Beta
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      - run: npm test
+      - run: npm run android:sync
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+      - name: Restore persistent beta signing key
+        env:
+          BETA_KEY: ${{ secrets.ANDROID_DEBUG_KEYSTORE }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, base64
+          key = os.environ['BETA_KEY']
+          if not key:
+              raise SystemExit('ANDROID_DEBUG_KEYSTORE secret is required for update-compatible APKs')
+          target = pathlib.Path.home() / '.android' / 'debug.keystore'
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_bytes(base64.b64decode(key))
+          target.chmod(0o600)
+          PY
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pixelwild-beta-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
