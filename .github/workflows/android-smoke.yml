@@ -10,8 +10,8 @@ permissions:
   actions: read
 jobs:
   emulator:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -25,18 +25,22 @@ jobs:
           BUILD_RUN: ${{ inputs.build_run }}
         run: gh run download "$BUILD_RUN" --name pixelwild-beta-apk --dir artifacts/apk
       - name: Start emulator
+        timeout-minutes: 8
         run: |
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           sudo chmod 666 /dev/kvm
+          sudo apt-get update -qq
+          sudo apt-get install -y libpulse0 libnss3 libnspr4 libxkbcommon-x11-0 libxcb-cursor0 libxcomposite1 libxcursor1
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'system-images;android-35;google_apis;x86_64'
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n pixelwild -k 'system-images;android-35;google_apis;x86_64' --device pixel_2
-          "$ANDROID_HOME/emulator/emulator" -avd pixelwild -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
-          adb wait-for-device
+          "$ANDROID_HOME/emulator/emulator" -avd pixelwild -no-window -no-audio -no-boot-anim -gpu swiftshader -no-snapshot -memory 2048 -cores 2 > /tmp/emulator.log 2>&1 &
+          timeout 120 adb wait-for-device || { cat /tmp/emulator.log; exit 1; }
           for i in $(seq 1 120); do
             if adb shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$'; then break; fi
             sleep 2
           done
+          adb shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$' || { cat /tmp/emulator.log; exit 1; }
           adb shell input keyevent 82
           adb install artifacts/apk/app-debug.apk
           adb shell svc wifi disable
@@ -47,12 +51,15 @@ jobs:
           test -n "$pid"
           adb forward tcp:9222 "localabstract:webview_devtools_remote_$pid"
       - name: Play offline inside APK
+        timeout-minutes: 2
         run: node scripts/android-smoke.mjs
       - name: Collect Android evidence
         if: always()
         run: |
-          adb logcat -d > artifacts/android-logcat.txt
-          adb exec-out screencap -p > artifacts/android-screen.png
+          mkdir -p artifacts
+          cp /tmp/emulator.log artifacts/android-emulator.txt || true
+          timeout 15 adb logcat -d > artifacts/android-logcat.txt || true
+          timeout 15 adb exec-out screencap -p > artifacts/android-screen.png || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -60,3 +67,4 @@ jobs:
           path: |
             artifacts/android-*.png
             artifacts/android-logcat.txt
+            artifacts/android-emulator.txt
