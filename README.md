@@ -84,6 +84,8 @@ npm run preview
 
 ## Проверки
 
+Опубликованный APK прошёл офлайн-проверку в эмуляторе Android 15. Подробности, ссылки на CI и границы проверки: [отчёт](docs/VERIFICATION.md).
+
 `npm test` проверяет генерацию, крафт, ход времени и валидацию недоверенных сохранений. `node scripts/smoke.mjs` при запущенном preview проверяет движение, добычу, крафт, сохранение после перезагрузки и сенсорное меню через установленный Chrome; скриншоты лежат в игнорируемой папке `artifacts`.
 
 Код: TypeScript + Canvas, Vite, Capacitor 8, Vercel Functions, Better Auth, Neon PostgreSQL. Графика нарисована кодом; чужие игровые текстуры не используются. Документация: [Capacitor](https://capacitorjs.com/docs), [Better Auth](https://better-auth.com/docs), [Neon](https://neon.tech/docs), [Vercel](https://vercel.com/docs).
